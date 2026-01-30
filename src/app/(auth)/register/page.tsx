@@ -31,6 +31,18 @@ export default function RegisterPage() {
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">Username</label>
+            <input
+              name="username"
+              type="text"
+              placeholder="johndoe"
+              className="input-field w-full"
+              required
+            />
+            <p className="text-xs text-muted-foreground mt-1">Only letters, numbers, and underscores</p>
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1">Email</label>
             <input
               name="email"
@@ -52,18 +64,6 @@ export default function RegisterPage() {
               minLength={6}
             />
             <p className="text-xs text-muted-foreground mt-1">Must be at least 6 characters</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1">Start Date</label>
-            <input
-              name="startDate"
-              type="date"
-              className="input-field w-full"
-              defaultValue={new Date().toISOString().split('T')[0]}
-              required
-            />
-            <p className="text-xs text-muted-foreground mt-1">When do you want to start tracking?</p>
           </div>
 
           {state?.error && (

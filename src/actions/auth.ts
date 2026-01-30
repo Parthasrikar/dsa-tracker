@@ -57,11 +57,18 @@ export async function signup(prevState: any, formData: FormData) {
   const username = formData.get('username') as string;
   const email = formData.get('email') as string;
   const password = formData.get('password') as string;
-  const startDateStr = formData.get('startDate') as string;
 
-  if (!name || !username || !email || !password || !startDateStr) {
-    return { error: 'Please provide all required fields' };
-  }
+  console.log('Signup Form Data:', {
+    name,
+    username,
+    email,
+    password: password ? '********' : null
+  });
+
+  if (!name) return { error: 'Name is required' };
+  if (!username) return { error: 'Username is required' };
+  if (!email) return { error: 'Email is required' };
+  if (!password) return { error: 'Password is required' };
 
   // Validate username format
   if (!/^[a-zA-Z0-9_]+$/.test(username)) {
@@ -93,9 +100,8 @@ export async function signup(prevState: any, formData: FormData) {
       }
     }
 
-    // Parse start date from input (YYYY-MM-DD -> Local Date at midnight)
-    const [y, m, d] = startDateStr.split('-').map(Number);
-    const userStartDate = new Date(y, m - 1, d);
+    // Use current date as default start date (can be changed in settings)
+    const userStartDate = new Date();
     userStartDate.setHours(0, 0, 0, 0);
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -112,15 +118,15 @@ export async function signup(prevState: any, formData: FormData) {
       }
     });
 
-    // Generate initial weeks
+    // Generate initial 12 weeks from current date
     // Start from the Monday of the week containing the start date
     const day = userStartDate.getDay();
     const diff = userStartDate.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
     const programStart = new Date(userStartDate);
-    programStart.setDate(diff); // This correctly adjusts the date object to the Monday
+    programStart.setDate(diff);
     programStart.setHours(0, 0, 0, 0);
 
-    // Dynamic import to avoid circular dep issues if any, though unlikely here
+    // Dynamic import to avoid circular dep issues
     const { Week } = await import('@/models/Week');
     const { Day } = await import('@/models/Day');
 
