@@ -7,6 +7,8 @@ import { Problem } from '@/models/Problem';
 import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/auth';
 
+import { invalidateCache, generateCacheKey } from '@/lib/cache';
+
 async function getUser() {
   const session = await getSession();
   if (!session || !session.user || !session.user.id) {
@@ -18,7 +20,21 @@ async function getUser() {
 export async function toggleDayCompletion(dayId: string, newState: boolean) {
   const user = await getUser();
   await dbConnect();
+
+  // Find which week this day belongs to for cache invalidation
+  const day = await Day.findById(dayId).select('weekNumber').lean();
+
   await Day.findOneAndUpdate({ _id: dayId, userId: user.id }, { isCompleted: newState });
+
+  // Invalidate caches
+  await Promise.all([
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    invalidateCache(generateCacheKey('week', (day as any)?.weekNumber, user.id)),
+    invalidateCache(generateCacheKey('dashboard', user.id)),
+    invalidateCache(generateCacheKey('insights', user.id)), // Consistency changes
+    invalidateCache(generateCacheKey('friends', 'page', user.id)) // Self in friends list might change stats? Actually stats are aggregating Day.
+  ]);
+
   revalidatePath('/');
   revalidatePath('/week/[id]', 'page');
 }
@@ -60,6 +76,15 @@ export async function addProblem(data: ProblemData) {
   const user = await getUser();
   await dbConnect();
   await Problem.create({ ...data, userId: user.id });
+
+  // Invalidate caches
+  await Promise.all([
+    invalidateCache(generateCacheKey('week', data.weekNumber, user.id)),
+    invalidateCache(generateCacheKey('problems', user.id)),
+    invalidateCache(generateCacheKey('dashboard', user.id)),
+    invalidateCache(generateCacheKey('insights', user.id))
+  ]);
+
   revalidatePath('/problems');
   revalidatePath('/week/[id]', 'page');
 }
@@ -67,7 +92,18 @@ export async function addProblem(data: ProblemData) {
 export async function updateProblemStatus(id: string, status: string) {
   const user = await getUser();
   await dbConnect();
-  await Problem.findOneAndUpdate({ _id: id, userId: user.id }, { status });
+  const problem = await Problem.findOneAndUpdate({ _id: id, userId: user.id }, { status }, { new: true }).lean();
+
+  if (problem) {
+    await Promise.all([
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      invalidateCache(generateCacheKey('week', (problem as any).weekNumber, user.id)),
+      invalidateCache(generateCacheKey('problems', user.id)),
+      invalidateCache(generateCacheKey('dashboard', user.id)),
+      invalidateCache(generateCacheKey('insights', user.id))
+    ]);
+  }
+
   revalidatePath('/problems');
 }
 

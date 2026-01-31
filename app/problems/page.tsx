@@ -4,7 +4,10 @@ import ProblemList from '@/components/ProblemList';
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 
+import { getOrSetCache, generateCacheKey } from '@/lib/cache';
+
 export const dynamic = 'force-dynamic';
+export const revalidate = 60; // Revalidate every 60 seconds
 
 export default async function ProblemsPage() {
   const session = await getSession();
@@ -12,22 +15,29 @@ export default async function ProblemsPage() {
     redirect('/login');
   }
 
-  await dbConnect();
-  
-  const problems = await Problem.find({ userId: session.user.id }).sort({ createdAt: -1 }).lean();
+  // Fetch with Redis Cache
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const serializedProblems = await getOrSetCache(
+    generateCacheKey('problems', session.user.id),
+    async () => {
+      await dbConnect();
+      const problems = await Problem.find({ userId: session.user.id }).sort({ createdAt: -1 }).lean();
 
-  const serializedProblems = problems.map(p => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const problem = p as any; 
-    return {
-      ...problem,
-      _id: problem._id.toString(),
-      userId: problem.userId.toString(),
-      dayId: problem.dayId?.toString(), // optional
-      createdAt: problem.createdAt ? problem.createdAt.toISOString() : undefined,
-      updatedAt: problem.updatedAt ? problem.updatedAt.toISOString() : undefined,
-    };
-  });
+      return problems.map(p => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const problem = p as any;
+        return {
+          ...problem,
+          _id: problem._id.toString(),
+          userId: problem.userId.toString(),
+          dayId: problem.dayId?.toString(), // optional
+          createdAt: problem.createdAt ? new Date(problem.createdAt).toISOString() : undefined,
+          updatedAt: problem.updatedAt ? new Date(problem.updatedAt).toISOString() : undefined,
+        };
+      });
+    },
+    60
+  );
 
   return (
     <div className="animate-in fade-in duration-500">

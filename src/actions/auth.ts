@@ -162,8 +162,10 @@ export async function signup(prevState: any, formData: FormData) {
       }
     }
 
-    await Week.insertMany(weeksToCreate);
-    await Day.insertMany(daysToCreate);
+    await Promise.all([
+      Week.insertMany(weeksToCreate),
+      Day.insertMany(daysToCreate)
+    ]);
 
     // Login immediately after signup
     const userData = {

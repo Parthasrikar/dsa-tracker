@@ -4,6 +4,8 @@ import dbConnect from '@/lib/db';
 import { redirect } from 'next/navigation';
 import { updateProgramConfig } from '@/actions';
 
+export const revalidate = 60; // Revalidate every 60 seconds
+
 export default async function SettingsPage() {
   const session = await getSession();
   if (!session || !session.user) {
@@ -11,7 +13,9 @@ export default async function SettingsPage() {
   }
 
   await dbConnect();
-  const user = await User.findById(session.user.id).lean();
+  const user = await User.findById(session.user.id)
+    .select('programConfig')
+    .lean();
 
   if (!user) {
     redirect('/login');
@@ -22,7 +26,7 @@ export default async function SettingsPage() {
     startDate: new Date(),
     totalWeeks: 12
   };
-  
+
   const startDateStr = config.startDate ? new Date(config.startDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
 
   async function saveConfig(formData: FormData) {
@@ -35,7 +39,7 @@ export default async function SettingsPage() {
   return (
     <div className="max-w-2xl mx-auto py-12 px-4 animate-in fade-in duration-500">
       <h1 className="text-3xl font-bold mb-8">Settings</h1>
-      
+
       <div className="glass-card p-6 rounded-2xl space-y-6">
         <div>
           <h2 className="text-xl font-semibold mb-2">Program Configuration</h2>
@@ -45,24 +49,24 @@ export default async function SettingsPage() {
         <form action={saveConfig} className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1">Start Date</label>
-            <input 
-              type="date" 
+            <input
+              type="date"
               name="startDate"
               defaultValue={startDateStr}
-              className="input-field w-full" 
+              className="input-field w-full"
             />
             <p className="text-xs text-muted-foreground mt-1">First day of Week 1</p>
           </div>
 
           <div>
             <label className="block text-sm font-medium mb-1">Total Duration (Weeks)</label>
-            <input 
-              type="number" 
+            <input
+              type="number"
               name="totalWeeks"
               defaultValue={config.totalWeeks}
-              min={1} 
+              min={1}
               max={52}
-              className="input-field w-full" 
+              className="input-field w-full"
             />
           </div>
 

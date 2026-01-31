@@ -30,7 +30,7 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<SortOption>('recent');
-  
+
   // New problem form state
   const [newTitle, setNewTitle] = useState('');
   const [newLink, setNewLink] = useState('');
@@ -97,7 +97,7 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
 
   async function handleAdd() {
     if (!newTitle) return;
-    
+
     await addProblem({
       title: newTitle,
       link: newLink,
@@ -124,17 +124,17 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
   };
 
   const toggleTagFilter = (tag: string) => {
-    setSelectedTags(prev => 
+    setSelectedTags(prev =>
       prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
     );
   };
 
   return (
     <div className="space-y-6">
-      
+
       {/* Search and Filters */}
       <div className="glass p-6 rounded-2xl space-y-4">
-        
+
         {/* Search Bar */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
@@ -143,7 +143,7 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
             placeholder="Search problems by title or tags..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-black/20 rounded-lg pl-10 pr-10 py-3 text-sm focus:ring-1 ring-primary outline-none border-none"
+            className="w-full bg-black/20 rounded-lg pl-10 pr-10 py-3 text-sm focus:ring-1 ring-primary outline-none border border-white/20 focus:border-primary transition-all"
           />
           {searchQuery && (
             <button
@@ -157,15 +157,15 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
 
         {/* Filter Tabs, Tag Filter, and Sort */}
         <div className="flex flex-col md:flex-row justify-between gap-4 items-start md:items-center">
-          
+
           {/* Status Filter Tabs */}
-          <div className="flex bg-black/20 p-1 rounded-lg overflow-x-auto">
+          <div className="flex bg-black/20 p-1 rounded-lg overflow-x-auto no-scrollbar">
             {(['ALL', 'DONE', 'ATTEMPTED', 'PENDING', 'STARRED'] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
                 className={clsx(
-                  "px-4 py-2 rounded-md text-sm font-bold transition-all whitespace-nowrap",
+                  "px-3 py-1.5 md:px-4 md:py-2 rounded-md text-xs md:text-sm font-bold transition-all whitespace-nowrap",
                   filter === f ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:text-white"
                 )}
               >
@@ -174,7 +174,7 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
             ))}
           </div>
 
-          <div className="flex gap-2 items-center">
+          <div className="flex gap-2 items-center flex-wrap">
             {/* Tag Filter Dropdown - Only show if tags exist */}
             {allTags.length > 0 && (
               <select
@@ -208,7 +208,7 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
               <option value="title">Title (A-Z)</option>
             </select>
 
-            <button 
+            <button
               onClick={() => setIsAdding(!isAdding)}
               className="flex items-center gap-2 bg-primary hover:bg-primary/80 text-white px-4 py-2 rounded-lg font-bold transition-colors whitespace-nowrap"
             >
@@ -250,22 +250,22 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
       <div className={clsx("overflow-hidden transition-all duration-300", isAdding ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0")}>
         <div className="glass-card p-6 rounded-2xl space-y-4">
           <h3 className="font-bold text-lg">Add New Problem</h3>
-          
-          <input 
-            placeholder="Problem Title" 
+
+          <input
+            placeholder="Problem Title"
             className="input-field w-full"
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
           />
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input 
-              placeholder="Link (LeetCode, etc.)" 
+            <input
+              placeholder="Link (LeetCode, etc.)"
               className="input-field"
               value={newLink}
               onChange={(e) => setNewLink(e.target.value)}
             />
-            <select 
+            <select
               className="input-field"
               value={newDifficulty}
               onChange={(e) => setNewDifficulty(e.target.value)}
@@ -382,33 +382,33 @@ function ProblemCard({ problem, router }: { problem: Problem; router: ReturnType
 
   return (
     <div className="glass-card p-4 rounded-xl group">
-      <div className="flex items-start justify-between gap-4">
-        
-        <div className="flex items-start gap-4 flex-1 min-w-0">
+      <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
+
+        <div className="flex items-start gap-4 flex-1 min-w-0 w-full">
           <StatusBadge status={problem.status} id={problem._id} />
-          
+
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <h3 className="font-bold text-lg truncate">{problem.title}</h3>
               {problem.link && (
                 <a href={problem.link} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary shrink-0">
-                  <ExternalLink size={14}/>
+                  <ExternalLink size={14} />
                 </a>
               )}
             </div>
-            
+
             <div className="flex flex-wrap gap-2 text-xs text-muted-foreground mb-2">
               <span className={clsx(
                 "font-bold",
                 problem.difficulty === 'Easy' ? "text-green-400" :
-                problem.difficulty === 'Medium' ? "text-yellow-400" : "text-red-400"
+                  problem.difficulty === 'Medium' ? "text-yellow-400" : "text-red-400"
               )}>
                 {problem.difficulty}
               </span>
               <span>Week {problem.weekNumber}</span>
               {problem.rating && (
                 <span className="flex items-center gap-1">
-                  {'⭐'.repeat(problem.rating)}
+                  {'⭐'.repeat(problem.rating || 0)}
                 </span>
               )}
             </div>
@@ -454,7 +454,7 @@ function ProblemCard({ problem, router }: { problem: Problem; router: ReturnType
                 <div className="flex items-center gap-2">
                   <label className="text-xs">Rating:</label>
                   <div className="flex gap-1">
-                    {[1,2,3,4,5].map(r => (
+                    {[1, 2, 3, 4, 5].map(r => (
                       <button
                         key={r}
                         onClick={() => setEditRating(r)}
@@ -508,14 +508,14 @@ function ProblemCard({ problem, router }: { problem: Problem; router: ReturnType
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto w-full sm:w-auto justify-end sm:justify-start">
           <button
             onClick={() => setIsEditingNotes(!isEditingNotes)}
             className={clsx(
               "p-2 transition-all",
               problem.notes
                 ? "text-blue-400 hover:text-blue-500"
-                : "text-muted-foreground hover:text-blue-400 opacity-0 group-hover:opacity-100"
+                : "text-muted-foreground hover:text-blue-400 opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
             )}
             title={problem.notes ? "Edit notes" : "Add notes"}
           >
@@ -523,12 +523,12 @@ function ProblemCard({ problem, router }: { problem: Problem; router: ReturnType
           </button>
           <button
             onClick={() => setIsEditingTags(!isEditingTags)}
-            className="p-2 text-muted-foreground hover:text-primary transition-all opacity-0 group-hover:opacity-100"
+            className="p-2 text-muted-foreground hover:text-primary transition-all opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
             title="Edit tags"
           >
             <Tag size={18} />
           </button>
-          <button 
+          <button
             onClick={async () => {
               await toggleProblemStar(problem._id, !!problem.starred);
               router.refresh();
@@ -536,16 +536,16 @@ function ProblemCard({ problem, router }: { problem: Problem; router: ReturnType
             className={clsx(
               "p-2 transition-all",
               problem.starred
-                ? "text-yellow-400 hover:text-yellow-500" 
-                : "text-muted-foreground hover:text-yellow-400 opacity-0 group-hover:opacity-100"
+                ? "text-yellow-400 hover:text-yellow-500"
+                : "text-muted-foreground hover:text-yellow-400 opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
             )}
             title={problem.starred ? "Unstar" : "Star"}
           >
             <Star size={18} fill={problem.starred ? "currentColor" : "none"} />
           </button>
-          <button 
+          <button
             onClick={() => deleteProblem(problem._id)}
-            className="p-2 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+            className="p-2 text-muted-foreground hover:text-red-500 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-all"
           >
             <Trash2 size={18} />
           </button>
@@ -558,7 +558,7 @@ function ProblemCard({ problem, router }: { problem: Problem; router: ReturnType
 
 function StatusBadge({ status, id }: { status: string, id: string }) {
   const getIcon = () => {
-    switch(status) {
+    switch (status) {
       case 'DONE': return <CheckCircle2 size={20} />;
       case 'ATTEMPTED': return <CircleDot size={20} />;
       case 'PENDING': return <Clock size={20} />;
@@ -566,7 +566,7 @@ function StatusBadge({ status, id }: { status: string, id: string }) {
   };
 
   const getColor = () => {
-    switch(status) {
+    switch (status) {
       case 'DONE': return 'text-green-500 bg-green-500/10';
       case 'ATTEMPTED': return 'text-blue-500 bg-blue-500/10';
       case 'PENDING': return 'text-yellow-500 bg-yellow-500/10';
@@ -575,9 +575,9 @@ function StatusBadge({ status, id }: { status: string, id: string }) {
 
   // Cycle: PENDING -> ATTEMPTED -> DONE -> PENDING
   const cycleStatus = async () => {
-    const next = 
-      status === 'PENDING' ? 'ATTEMPTED' : 
-      status === 'ATTEMPTED' ? 'DONE' : 'PENDING';
+    const next =
+      status === 'PENDING' ? 'ATTEMPTED' :
+        status === 'ATTEMPTED' ? 'DONE' : 'PENDING';
     await updateProblemStatus(id, next);
   };
 

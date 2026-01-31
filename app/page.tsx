@@ -14,20 +14,32 @@ export const dynamic = 'force-dynamic';
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 
-async function getData(userId: string) {
-  await dbConnect();
-  
-  // Fetch user config
-  const user = await User.findById(userId).lean();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const totalWeeks = (user as any)?.programConfig?.totalWeeks || 12;
-  
-  // Fetch all weeks, days, and problems for the user
-  const weeksData = await Week.find({ userId }).sort({ weekNumber: 1 }).lean();
-  const daysData = await Day.find({ userId }).lean();
-  const problemsData = await Problem.find({ userId }).lean();
+import { getOrSetCache, generateCacheKey } from '@/lib/cache';
 
-  return { weeks: weeksData, days: daysData, problems: problemsData, totalWeeks };
+async function getData(userId: string) {
+  // Fetch with Redis Cache
+  return await getOrSetCache(
+    generateCacheKey('dashboard', userId),
+    async () => {
+      await dbConnect();
+
+      // Fetch user config
+      const user = await User.findById(userId).lean();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const totalWeeks = (user as any)?.programConfig?.totalWeeks || 12;
+
+      // Fetch all weeks, days, and problems for the user
+      // Parallel queries for better performance
+      const [weeksData, daysData, problemsData] = await Promise.all([
+        Week.find({ userId }).sort({ weekNumber: 1 }).lean(),
+        Day.find({ userId }).lean(),
+        Problem.find({ userId }).lean()
+      ]);
+
+      return { weeks: weeksData, days: daysData, problems: problemsData, totalWeeks };
+    },
+    60 // Cache for 60 seconds
+  );
 }
 
 
@@ -53,10 +65,10 @@ export default async function Dashboard() {
 
   return (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      
+
       {/* Header */}
       <div className="text-center space-y-4">
-        <h1 className="text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary via-purple-400 to-pink-400 pb-2">
+        <h1 className="text-3xl md:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary via-purple-400 to-pink-400 pb-2">
           {totalWeeks} Weeks to Glory
         </h1>
         <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
@@ -72,13 +84,13 @@ export default async function Dashboard() {
           const endDate = addDays(new Date(week.startDate), 6);
 
           return (
-            <Link 
-              href={`/week/${week.weekNumber}`} 
+            <Link
+              href={`/week/${week.weekNumber}`}
               key={week._id.toString()}
               className={clsx(
                 "group relative p-6 rounded-2xl border transition-all duration-300",
-                isCurrent 
-                  ? "bg-primary/10 border-primary shadow-[0_0_30px_-10px_rgba(124,58,237,0.5)] scale-105 ring-1 ring-primary" 
+                isCurrent
+                  ? "bg-primary/10 border-primary shadow-[0_0_30px_-10px_rgba(124,58,237,0.5)] scale-105 ring-1 ring-primary"
                   : "glass-card hover:translate-y-[-4px]"
               )}
             >
@@ -100,9 +112,9 @@ export default async function Dashboard() {
                 {percent === 100 ? (
                   <CheckCircle2 className="text-green-500" />
                 ) : (
-                   <div className="text-xs font-mono font-bold text-muted-foreground bg-white/5 px-2 py-1 rounded">
-                     {percent}%
-                   </div>
+                  <div className="text-xs font-mono font-bold text-muted-foreground bg-white/5 px-2 py-1 rounded">
+                    {percent}%
+                  </div>
                 )}
               </div>
 
@@ -110,12 +122,12 @@ export default async function Dashboard() {
               <div className="mb-3">
                 <div className="flex gap-1 justify-between">
                   {weekDays.map((day, idx) => (
-                    <div 
+                    <div
                       key={idx}
                       className={clsx(
                         "flex-1 h-8 rounded transition-all",
-                        day.isCompleted 
-                          ? "bg-green-500/80 hover:bg-green-500" 
+                        day.isCompleted
+                          ? "bg-green-500/80 hover:bg-green-500"
                           : "bg-white/5 hover:bg-white/10"
                       )}
                       title={`${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][idx]} - ${day.isCompleted ? 'Completed' : 'Incomplete'}`}

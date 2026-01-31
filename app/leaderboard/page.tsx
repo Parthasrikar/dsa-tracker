@@ -6,148 +6,156 @@ import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
+import { getOrSetCache, generateCacheKey } from '@/lib/cache';
+
 export const dynamic = 'force-dynamic';
+export const revalidate = 60; // Revalidate every 60 seconds
 
 export default async function LeaderboardPage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
-  const session = await getSession();
-  if (!session || !session.user) {
-    redirect('/login');
-  }
+    const session = await getSession();
+    if (!session || !session.user) {
+        redirect('/login');
+    }
 
-  const { filter } = await searchParams;
-  const isFriendsOnly = filter === 'friends';
+    const { filter } = await searchParams;
+    const isFriendsOnly = filter === 'friends';
 
-  await dbConnect();
+    // Cache key depends on filter
+    const cacheKey = isFriendsOnly
+        ? generateCacheKey('leaderboard', 'friends', session.user.id)
+        : generateCacheKey('leaderboard', 'global');
 
-  let userIdsToFetch: string[] = [];
-  
-  if (isFriendsOnly) {
-     const currentUser = await User.findById(session.user.id);
-     if (currentUser) {
-         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-         userIdsToFetch = currentUser.friends.map((id: any) => id.toString());
-         userIdsToFetch.push(session.user.id); // Include self
-     }
-  }
+    // Fetch with Redis Cache
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const leaderboardData = await getOrSetCache(cacheKey, async () => {
+        await dbConnect();
 
-  // Aggregate Consistency (Total Days Completed)
-  const consistencyStats = await Day.aggregate([
-      { $match: { isCompleted: true } },
-      { $group: { _id: '$userId', count: { $sum: 1 } } }
-  ]);
+        let userIdsToFetch: string[] = [];
 
-  // Aggregate Problems Solved
-  const problemStats = await Problem.aggregate([
-      { $match: { status: 'DONE' } },
-      { $group: { _id: '$userId', count: { $sum: 1 } } }
-  ]);
+        if (isFriendsOnly) {
+            const currentUser = await User.findById(session.user.id).select('friends').lean();
+            if (currentUser) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                userIdsToFetch = (currentUser as any).friends.map((id: any) => id.toString());
+                userIdsToFetch.push(session.user.id); // Include self
+            }
+        }
 
-  // Create Maps for O(1) lookup - filter out null _id values
-  const consistencyMap = new Map(
-    consistencyStats
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .filter((s: any) => s._id != null)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((s: any) => [s._id.toString(), s.count])
-  );
-  const problemMap = new Map(
-    problemStats
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .filter((s: any) => s._id != null)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((s: any) => [s._id.toString(), s.count])
-  );
+        // Parallel aggregations for better performance
+        const [consistencyStats, problemStats, users] = await Promise.all([
+            // Aggregate Consistency (Total Days Completed)
+            Day.aggregate([
+                { $match: { isCompleted: true } },
+                { $group: { _id: '$userId', count: { $sum: 1 } } },
+                { $project: { _id: 1, count: 1 } }
+            ]),
+            // Aggregate Problems Solved
+            Problem.aggregate([
+                { $match: { status: 'DONE' } },
+                { $group: { _id: '$userId', count: { $sum: 1 } } },
+                { $project: { _id: 1, count: 1 } }
+            ]),
+            // Fetch Users
+            User.find(isFriendsOnly ? { _id: { $in: userIdsToFetch } } : {})
+                .select('name image email')
+                .lean()
+        ]);
 
-  // Fetch Users
-  const query = isFriendsOnly ? { _id: { $in: userIdsToFetch } } : {};
-  const users = await User.find(query).select('name image email').lean();
+        // Create Maps for O(1) lookup
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const consistencyMap = new Map(consistencyStats.map((s: any) => [s._id.toString(), s.count]));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const problemMap = new Map(problemStats.map((s: any) => [s._id.toString(), s.count]));
 
-  // Combine Data
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const leaderboardData = users.map((u: any) => {
-      const uid = u._id.toString();
-      return {
-          id: uid,
-          name: u.name,
-          image: u.image,
-          consistency: consistencyMap.get(uid) || 0,
-          problemsSolved: problemMap.get(uid) || 0
-      };
-  });
+        // Combine Data
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const data = users.map((u: any) => {
+            const uid = u._id.toString();
+            return {
+                id: uid,
+                name: u.name,
+                image: u.image,
+                consistency: consistencyMap.get(uid) || 0,
+                problemsSolved: problemMap.get(uid) || 0
+            };
+        });
 
-  // Sort by Consistency (primary) then Problems (secondary)
-  leaderboardData.sort((a, b) => {
-      if (b.consistency !== a.consistency) {
-          return b.consistency - a.consistency;
-      }
-      return b.problemsSolved - a.problemsSolved;
-  });
+        // Sort by Consistency (primary) then Problems (secondary)
+        data.sort((a, b) => {
+            if (b.consistency !== a.consistency) {
+                return b.consistency - a.consistency;
+            }
+            return b.problemsSolved - a.problemsSolved;
+        });
 
-  return (
-    <div className="max-w-4xl mx-auto py-8 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-        <div>
-            <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-orange-500">Leaderboard</h1>
-            <p className="text-muted-foreground">Top performers based on consistency.</p>
-        </div>
-        
-        <div className="flex bg-muted/20 p-1 rounded-lg">
-            <Link 
-                href="/leaderboard" 
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${!isFriendsOnly ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-                Global
-            </Link>
-            <Link 
-                href="/leaderboard?filter=friends" 
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${isFriendsOnly ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-                Friends Only
-            </Link>
-        </div>
-      </div>
+        return data;
+    }, 60); // Cache for 60 seconds
 
-      <div className="space-y-4">
-        {leaderboardData.map((user, index) => (
-            <div 
-                key={user.id} 
-                className={`glass-card p-4 rounded-xl flex items-center gap-4 transition-transform hover:scale-[1.01] ${user.id === session.user.id ? 'border-primary/50 bg-primary/5' : ''}`}
-            >
-                <div className={`w-12 h-12 flex items-center justify-center font-bold text-xl rounded-full ${index < 3 ? 'text-white' : 'text-muted-foreground bg-muted/30'}`}
-                     style={{
-                         backgroundColor: index === 0 ? '#EAB308' : index === 1 ? '#94A3B8' : index === 2 ? '#B45309' : undefined
-                     }}
-                >
-                    {index + 1}
+    return (
+        <div className="max-w-4xl mx-auto py-8 animate-in fade-in duration-500">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                <div>
+                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-orange-500">Leaderboard</h1>
+                    <p className="text-muted-foreground">Top performers based on consistency.</p>
                 </div>
-                
-                <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                        <Link href={`/profile/${user.id}`} className="font-bold text-lg hover:underline decoration-primary">
-                            {user.name}
-                        </Link>
-                        {user.id === session.user.id && <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">You</span>}
+
+                <div className="flex bg-muted/20 p-1 rounded-lg">
+                    <Link
+                        href="/leaderboard"
+                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${!isFriendsOnly ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                    >
+                        Global
+                    </Link>
+                    <Link
+                        href="/leaderboard?filter=friends"
+                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${isFriendsOnly ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                    >
+                        Friends Only
+                    </Link>
+                </div>
+            </div>
+
+            <div className="space-y-4">
+                {leaderboardData.map((user, index) => (
+                    <div
+                        key={user.id}
+                        className={`glass-card p-4 rounded-xl flex items-center gap-4 transition-transform hover:scale-[1.01] ${user.id === session.user.id ? 'border-primary/50 bg-primary/5' : ''}`}
+                    >
+                        <div className={`w-12 h-12 flex items-center justify-center font-bold text-xl rounded-full ${index < 3 ? 'text-white' : 'text-muted-foreground bg-muted/30'}`}
+                            style={{
+                                backgroundColor: index === 0 ? '#EAB308' : index === 1 ? '#94A3B8' : index === 2 ? '#B45309' : undefined
+                            }}
+                        >
+                            {index + 1}
+                        </div>
+
+                        <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                                <Link href={`/profile/${user.id}`} className="font-bold text-lg hover:underline decoration-primary">
+                                    {user.name}
+                                </Link>
+                                {user.id === session.user.id && <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">You</span>}
+                            </div>
+                        </div>
+
+                        <div className="text-right px-4 border-l border-white/10">
+                            <div className="text-2xl font-bold">{user.consistency}</div>
+                            <div className="text-xs text-muted-foreground">Days</div>
+                        </div>
+
+                        <div className="text-right px-4 border-l border-white/10 hidden sm:block">
+                            <div className="text-2xl font-bold text-green-500">{user.problemsSolved}</div>
+                            <div className="text-xs text-muted-foreground">Solved</div>
+                        </div>
                     </div>
-                </div>
+                ))}
 
-                <div className="text-right px-4 border-l border-white/10">
-                    <div className="text-2xl font-bold">{user.consistency}</div>
-                    <div className="text-xs text-muted-foreground">Days</div>
-                </div>
-
-                 <div className="text-right px-4 border-l border-white/10 hidden sm:block">
-                    <div className="text-2xl font-bold text-green-500">{user.problemsSolved}</div>
-                    <div className="text-xs text-muted-foreground">Solved</div>
-                </div>
+                {leaderboardData.length === 0 && (
+                    <div className="text-center py-12 text-muted-foreground">
+                        No users found.
+                    </div>
+                )}
             </div>
-        ))}
-
-        {leaderboardData.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground">
-                No users found.
-            </div>
-        )}
-      </div>
-    </div>
-  );
+        </div>
+    );
 }

@@ -4,6 +4,8 @@ import './globals.css';
 import Navbar from '@/components/Navbar';
 import { ToastProvider } from '@/components/ToastProvider';
 
+import RegisterSW from '@/components/RegisterSW';
+
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
@@ -18,7 +20,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className={inter.className} suppressHydrationWarning>
+        <RegisterSW />
         <ToastProvider>
           <div className="min-h-screen bg-background text-foreground bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-background to-background">
             <Navbar />
