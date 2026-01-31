@@ -133,7 +133,7 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
     <div className="space-y-6">
 
       {/* Search and Filters */}
-      <div className="glass p-6 rounded-2xl space-y-4">
+      <div className="glass p-4 md:p-6 rounded-2xl space-y-4">
 
         {/* Search Bar */}
         <div className="relative">
@@ -159,7 +159,7 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
         <div className="flex flex-col md:flex-row justify-between gap-4 items-start md:items-center">
 
           {/* Status Filter Tabs */}
-          <div className="flex bg-black/20 p-1 rounded-lg overflow-x-auto no-scrollbar">
+          <div className="flex bg-black/20 p-1 rounded-lg overflow-x-auto no-scrollbar w-full md:w-auto max-w-full">
             {(['ALL', 'DONE', 'ATTEMPTED', 'PENDING', 'STARRED'] as const).map((f) => (
               <button
                 key={f}
@@ -247,7 +247,7 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
       </div>
 
       {/* Add Form */}
-      <div className={clsx("overflow-hidden transition-all duration-300", isAdding ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0")}>
+      <div className={clsx("overflow-hidden transition-all duration-300", isAdding ? "max-h-[1000px] opacity-100" : "max-h-0 opacity-0")}>
         <div className="glass-card p-6 rounded-2xl space-y-4">
           <h3 className="font-bold text-lg">Add New Problem</h3>
 
@@ -388,8 +388,8 @@ function ProblemCard({ problem, router }: { problem: Problem; router: ReturnType
           <StatusBadge status={problem.status} id={problem._id} />
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="font-bold text-lg truncate">{problem.title}</h3>
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <h3 className="font-bold text-lg break-words">{problem.title}</h3>
               {problem.link && (
                 <a href={problem.link} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary shrink-0">
                   <ExternalLink size={14} />

@@ -2,31 +2,51 @@ import Redis from 'ioredis';
 
 const REDIS_URL = process.env.REDIS_URL;
 
+declare global {
+    // eslint-disable-next-line no-var
+    var redisGlobal: Redis | undefined;
+}
+
 let redis: Redis | null = null;
 
 if (REDIS_URL) {
     try {
-        redis = new Redis(REDIS_URL, {
+        const options = {
             maxRetriesPerRequest: 1,
-            retryStrategy: (times) => {
+            retryStrategy: (times: number) => {
                 if (times > 3) return null; // stop processing retry after 3 times
                 return Math.min(times * 50, 2000);
             }
-        });
+        };
 
-        redis.on('error', (err) => {
-            console.warn('Redis connection error:', err);
-        });
+        if (process.env.NODE_ENV === 'production') {
+            redis = new Redis(REDIS_URL, options);
+        } else {
+            if (!global.redisGlobal) {
+                global.redisGlobal = new Redis(REDIS_URL, options);
+            }
+            redis = global.redisGlobal;
+        }
 
-        redis.on('connect', () => {
-            console.log('Successfully connected to Redis');
-        });
+        // Only attach listeners if they haven't been attached yet to avoid spamming console
+        if (redis && redis.listenerCount('error') === 0) {
+            redis.on('error', (err) => {
+                console.warn('Redis connection error:', err);
+            });
+
+            redis.on('connect', () => {
+                console.log('Successfully connected to Redis');
+            });
+        }
 
     } catch (error) {
         console.warn('Failed to initialize Redis client:', error);
     }
 } else {
-    console.warn('REDIS_URL not found in environment variables. Caching will be disabled.');
+    // Only log warning in development to avoid cluttering prod logs if intentionally disabled
+    if (process.env.NODE_ENV !== 'production') {
+        console.warn('REDIS_URL not found in environment variables. Caching will be disabled.');
+    }
 }
 
 /**

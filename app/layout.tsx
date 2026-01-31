@@ -23,7 +23,7 @@ export default function RootLayout({
       <body className={inter.className} suppressHydrationWarning>
         <RegisterSW />
         <ToastProvider>
-          <div className="min-h-screen bg-background text-foreground bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-background to-background">
+          <div className="min-h-screen bg-background text-foreground bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-background to-background overflow-x-hidden">
             <Navbar />
             <main className="pt-24 px-4 pb-12 max-w-6xl mx-auto">
               {children}
