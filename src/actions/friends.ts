@@ -1,10 +1,11 @@
 'use server';
 
 import dbConnect from '@/lib/db';
-import { User } from '@/models/User';
 import { FriendRequest } from '@/models/FriendRequest';
+import { User } from '@/models/User';
 import { getSession } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
+import { generateCacheKey, invalidateCache } from '@/lib/cache';
 
 async function getUser() {
   const session = await getSession();
@@ -14,103 +15,82 @@ async function getUser() {
   return session.user;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function sendFriendRequest(prevState: any, formData: FormData) {
-  const searchTerm = formData.get('email') as string;
-
-  const currentUser = await getUser();
+export async function sendFriendRequest(targetUserId: string) {
+  const user = await getUser();
   await dbConnect();
 
-  // Search by email or username
-  const targetUser = await User.findOne({ 
-    $or: [
-      { email: searchTerm },
-      { username: searchTerm.toLowerCase() }
-    ]
-  });
-  
-  if (!targetUser) {
-    return { error: 'User not found' };
+  if (user.id === targetUserId) {
+    throw new Error("Cannot send friend request to yourself");
   }
 
-  if (targetUser._id.toString() === currentUser.id) {
-    return { error: 'Cannot add yourself' };
+  // Check if already friends
+  const currentUser = await User.findById(user.id);
+  if (currentUser?.friends.includes(targetUserId as any)) {
+    return { success: false, message: "Already friends" };
   }
 
-  const sender = await User.findById(currentUser.id);
-  if (!sender) {
-    return { error: 'User not found' };
-  }
-  if (sender.friends.includes(targetUser._id)) {
-    return { error: 'Already friends' };
-  }
-
-  // Check for existing request
+  // Check if request already exists
   const existingRequest = await FriendRequest.findOne({
     $or: [
-      { from: currentUser.id, to: targetUser._id },
-      { from: targetUser._id, to: currentUser.id }
+      { from: user.id, to: targetUserId },
+      { from: targetUserId, to: user.id }
     ],
     status: 'PENDING'
   });
 
   if (existingRequest) {
-    return { error: 'Friend request already pending' };
+    return { success: false, message: "Request already pending" };
   }
 
+  // Create friend request
   await FriendRequest.create({
-    from: currentUser.id,
-    to: targetUser._id,
+    from: user.id,
+    to: targetUserId,
     status: 'PENDING'
   });
 
+  revalidatePath('/leaderboard');
   revalidatePath('/friends');
   return { success: true };
 }
 
 export async function respondToFriendRequest(requestId: string, action: 'ACCEPT' | 'REJECT') {
-  const currentUser = await getUser();
+  const user = await getUser();
   await dbConnect();
 
   const request = await FriendRequest.findById(requestId);
   if (!request) {
-    return { error: 'Request not found' };
+    throw new Error('Request not found');
   }
 
-  if (request.to.toString() !== currentUser.id) {
-    return { error: 'Unauthorized' };
-  }
-
-  if (request.status !== 'PENDING') {
-    return { error: 'Request already handled' };
+  // Verify recipient
+  if (request.to.toString() !== user.id) {
+    throw new Error('Unauthorized');
   }
 
   if (action === 'REJECT') {
-    request.status = 'REJECTED';
-    await request.save();
+    await FriendRequest.findByIdAndDelete(requestId);
   } else {
-    request.status = 'ACCEPTED';
-    await request.save();
+    // Accept logic
+    await FriendRequest.findByIdAndUpdate(requestId, { status: 'ACCEPTED' });
 
     // Add to friends lists
     await User.findByIdAndUpdate(request.from, { $addToSet: { friends: request.to } });
     await User.findByIdAndUpdate(request.to, { $addToSet: { friends: request.from } });
+
+    // Clean up request
+    await FriendRequest.findByIdAndDelete(requestId);
+
+    // Invalidate caches
+    await Promise.all([
+      invalidateCache(generateCacheKey('leaderboard', 'friends', user.id)),
+      invalidateCache(generateCacheKey('leaderboard', 'friends', request.from.toString())),
+      invalidateCache(generateCacheKey('friends', 'page', user.id)),
+      invalidateCache(generateCacheKey('friends', 'page', request.from.toString()))
+    ]);
   }
 
   revalidatePath('/friends');
-  return { success: true };
-}
-
-export async function removeFriend(friendId: string) {
-  const currentUser = await getUser();
-  await dbConnect();
-
-  await User.findByIdAndUpdate(currentUser.id, { $pull: { friends: friendId } });
-  await User.findByIdAndUpdate(friendId, { $pull: { friends: currentUser.id } });
-
-  // Also verify if there are any Accepted requests and maybe clean them up or leave them as history
-  // Typically we can leave them or update status, but strictly removing from friends array is enough for logic.
-
-  revalidatePath('/friends');
+  revalidatePath('/leaderboard');
   return { success: true };
 }
