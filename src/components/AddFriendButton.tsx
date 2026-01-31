@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { UserPlus, Check, Clock } from 'lucide-react';
-import { sendFriendRequest } from '@/actions/friends';
+import { sendFriendRequestById } from '@/actions/friends';
 import { clsx } from 'clsx';
 
 export default function AddFriendButton({ userId, isFriend, hasPendingRequest }: { userId: string, isFriend: boolean, hasPendingRequest?: boolean }) {
@@ -30,11 +30,11 @@ export default function AddFriendButton({ userId, isFriend, hasPendingRequest }:
     const handleSend = async () => {
         setLoading(true);
         try {
-            const res = await sendFriendRequest(userId);
+            const res = await sendFriendRequestById(userId);
             if (res.success) {
                 setStatus('SENT');
-            } else {
-                console.error(res.message);
+            } else if (res.error) {
+                console.error(res.error);
             }
         } catch (err) {
             console.error(err);
