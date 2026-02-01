@@ -44,7 +44,7 @@ export default async function FriendsPage() {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const friends = (user as any).friends || [];
+  const friends = ((user as any).friends || []).filter((friend: any) => friend && friend._id && friend.name);
 
   return (
     <div className="max-w-4xl mx-auto py-8 animate-in fade-in duration-500">
@@ -69,11 +69,11 @@ export default async function FriendsPage() {
                   <div key={friend._id.toString()} className="glass-card p-4 rounded-xl flex items-center justify-between group hover:border-primary/50 transition-colors">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white font-bold">
-                        {friend.name.charAt(0).toUpperCase()}
+                        {friend.name?.charAt(0)?.toUpperCase() || '?'}
                       </div>
                       <div>
-                        <div className="font-bold">{friend.name}</div>
-                        <div className="text-xs text-muted-foreground truncate max-w-[120px]">{friend.email}</div>
+                        <div className="font-bold">{friend.name || 'Unknown'}</div>
+                        <div className="text-xs text-muted-foreground truncate max-w-[120px]">{friend.email || ''}</div>
                       </div>
                     </div>
                     <Link href={`/profile/${friend._id.toString()}`} className="text-xs font-bold text-primary opacity-0 group-hover:opacity-100 transition-opacity">
