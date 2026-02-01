@@ -4,10 +4,12 @@ import { useState } from 'react';
 import { UserPlus, Check, Clock } from 'lucide-react';
 import { sendFriendRequestById } from '@/actions/friends';
 import { clsx } from 'clsx';
+import { useToast } from '@/components/ToastProvider';
 
 export default function AddFriendButton({ userId, isFriend, hasPendingRequest }: { userId: string, isFriend: boolean, hasPendingRequest?: boolean }) {
     const [status, setStatus] = useState<'IDLE' | 'SENT'>('IDLE');
     const [loading, setLoading] = useState(false);
+    const { showToast } = useToast();
 
     if (isFriend) {
         return (
@@ -33,11 +35,14 @@ export default function AddFriendButton({ userId, isFriend, hasPendingRequest }:
             const res = await sendFriendRequestById(userId);
             if (res.success) {
                 setStatus('SENT');
+                showToast('Friend request sent successfully!', 'success');
             } else if (res.error) {
-                console.error(res.error);
+                console.error('Friend request error:', res.error);
+                showToast(res.error || 'Failed to send friend request. Please try again.', 'error');
             }
         } catch (err) {
-            console.error(err);
+            console.error('Unexpected error:', err);
+            showToast('An unexpected error occurred. Please try again later.', 'error');
         } finally {
             setLoading(false);
         }
