@@ -46,6 +46,10 @@ export default async function FriendsPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const friends = ((user as any).friends || []).filter((friend: any) => friend && friend._id && friend.name);
 
+  // Filter out invalid friend requests where the 'from' user doesn't exist
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const validPendingRequests = (pendingRequests || []).filter((req: any) => req && req.from && req.from._id);
+
   return (
     <div className="max-w-4xl mx-auto py-8 animate-in fade-in duration-500">
       <div className="mb-8">
@@ -89,14 +93,14 @@ export default async function FriendsPage() {
         <div className="space-y-6">
           <AddFriend />
 
-          {pendingRequests.length > 0 && (
+          {validPendingRequests.length > 0 && (
             <div className="glass-card p-6 rounded-xl space-y-4">
               <h3 className="font-bold text-lg flex items-center gap-2">
-                Requests <span className="bg-primary text-white text-xs px-2 py-0.5 rounded-full">{pendingRequests.length}</span>
+                Requests <span className="bg-primary text-white text-xs px-2 py-0.5 rounded-full">{validPendingRequests.length}</span>
               </h3>
               <div className="space-y-3">
                 {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                {pendingRequests.map((req: any) => (
+                {validPendingRequests.map((req: any) => (
                   <FriendRequestItem key={req._id.toString()} request={{ ...req, _id: req._id.toString(), from: { ...req.from, _id: req.from._id.toString() } }} />
                 ))}
               </div>
