@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Trash2, ExternalLink, CheckCircle2, Clock, Star, CircleDot, Search, X, Tag, FileText } from 'lucide-react';
 import { clsx } from 'clsx';
-import { addProblem, updateProblemStatus, deleteProblem, toggleProblemStar, updateProblemTags, updateProblemNotes } from '@/actions';
+import { addProblem, updateProblemStatus, deleteProblem, toggleProblemStar, updateProblemTags, updateProblemNotes, copyProblemToMyList } from '@/actions';
 
 // Types
 type Problem = {
@@ -23,8 +23,21 @@ type Problem = {
 
 type SortOption = 'recent' | 'oldest' | 'rating-high' | 'rating-low' | 'title';
 
-export default function ProblemList({ initialProblems }: { initialProblems: Problem[] }) {
+type GlobalProblem = {
+  _id: string; // usually the link
+  title: string;
+  link?: string;
+  difficulty?: 'Easy' | 'Medium' | 'Hard';
+  tags?: string[];
+  count: number;
+};
+
+
+export default function ProblemList({ initialProblems, globalProblems = [] }: { initialProblems: Problem[], globalProblems?: GlobalProblem[] }) {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<'my' | 'global'>('my');
+
+  // existing state ...
   const [filter, setFilter] = useState<'ALL' | 'DONE' | 'ATTEMPTED' | 'PENDING' | 'STARRED'>('ALL');
   const [isAdding, setIsAdding] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -39,7 +52,8 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
   const [newTags, setNewTags] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState('');
 
-  // Get all unique tags from problems
+  // Get all unique tags from problems (based on active tab?)
+  // Actually, filtering logic applies to "My Problems". Global problems might need their own simple filter or just search.
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
     initialProblems.forEach(p => {
@@ -48,7 +62,7 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
     return Array.from(tagSet).sort();
   }, [initialProblems]);
 
-  // Filter and sort problems
+  // Filter and sort problems (My Problems)
   const filteredProblems = useMemo(() => {
     const filtered = initialProblems.filter(p => {
       // Status filter
@@ -67,7 +81,7 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
 
       // Tag filter
       if (selectedTags.length > 0) {
-        const hasTags = selectedTags.every(tag => p.tags?.includes(tag));
+        const hasTags = selectedTags.some(tag => p.tags?.includes(tag));
         if (!hasTags) return false;
       }
 
@@ -95,6 +109,17 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
     return filtered;
   }, [initialProblems, filter, searchQuery, selectedTags, sortBy]);
 
+  // Filter Global Problems (Simple search)
+  const filteredGlobalProblems = useMemo(() => {
+    if (!searchQuery) return globalProblems;
+    const query = searchQuery.toLowerCase();
+    return globalProblems.filter(p =>
+      p.title.toLowerCase().includes(query) ||
+      p.tags?.some(tag => tag.toLowerCase().includes(query))
+    );
+  }, [globalProblems, searchQuery]);
+
+
   async function handleAdd() {
     if (!newTitle) return;
 
@@ -117,8 +142,9 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
   }
 
   const addNewTag = () => {
-    if (newTagInput && !newTags.includes(newTagInput.toLowerCase())) {
-      setNewTags([...newTags, newTagInput.toLowerCase()]);
+    const cleanTag = newTagInput.trim().toLowerCase();
+    if (cleanTag && !newTags.includes(cleanTag)) {
+      setNewTags([...newTags, cleanTag]);
       setNewTagInput('');
     }
   };
@@ -132,6 +158,28 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
   return (
     <div className="space-y-6">
 
+      {/* Tabs */}
+      <div className="flex items-center gap-4 border-b border-white/10 pb-4">
+        <button
+          onClick={() => setActiveTab('my')}
+          className={clsx(
+            "px-4 py-2 rounded-lg text-sm font-bold transition-all",
+            activeTab === 'my' ? "bg-primary text-white" : "text-muted-foreground hover:bg-white/5"
+          )}
+        >
+          My Problems
+        </button>
+        <button
+          onClick={() => setActiveTab('global')}
+          className={clsx(
+            "px-4 py-2 rounded-lg text-sm font-bold transition-all",
+            activeTab === 'global' ? "bg-primary text-white" : "text-muted-foreground hover:bg-white/5"
+          )}
+        >
+          Global ({globalProblems.length})
+        </button>
+      </div>
+
       {/* Search and Filters */}
       <div className="glass p-4 md:p-6 rounded-2xl space-y-4">
 
@@ -140,7 +188,7 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
           <input
             type="text"
-            placeholder="Search problems by title or tags..."
+            placeholder={activeTab === 'my' ? "Search your problems..." : "Search global problems..."}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-black/20 rounded-lg pl-10 pr-10 py-3 text-sm focus:ring-1 ring-primary outline-none border border-white/20 focus:border-primary transition-all"
@@ -155,71 +203,73 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
           )}
         </div>
 
-        {/* Filter Tabs, Tag Filter, and Sort */}
-        <div className="flex flex-col md:flex-row justify-between gap-4 items-start md:items-center">
+        {/* Filter Tabs, Tag Filter, and Sort (Only for My Problems) */}
+        {activeTab === 'my' && (
+          <div className="flex flex-col md:flex-row justify-between gap-4 items-start md:items-center">
 
-          {/* Status Filter Tabs */}
-          <div className="flex bg-black/20 p-1 rounded-lg overflow-x-auto no-scrollbar w-full md:w-auto max-w-full">
-            {(['ALL', 'DONE', 'ATTEMPTED', 'PENDING', 'STARRED'] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={clsx(
-                  "px-3 py-1.5 md:px-4 md:py-2 rounded-md text-xs md:text-sm font-bold transition-all whitespace-nowrap",
-                  filter === f ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:text-white"
-                )}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
+            {/* Status Filter Tabs */}
+            <div className="flex bg-black/20 p-1 rounded-lg overflow-x-auto no-scrollbar w-full md:w-auto max-w-full">
+              {(['ALL', 'DONE', 'ATTEMPTED', 'PENDING', 'STARRED'] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={clsx(
+                    "px-3 py-1.5 md:px-4 md:py-2 rounded-md text-xs md:text-sm font-bold transition-all whitespace-nowrap",
+                    filter === f ? "bg-primary text-white shadow-lg" : "text-muted-foreground hover:text-white"
+                  )}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
 
-          <div className="flex gap-2 items-center flex-wrap">
-            {/* Tag Filter Dropdown - Only show if tags exist */}
-            {allTags.length > 0 && (
+            <div className="flex gap-2 items-center flex-wrap">
+              {/* Tag Filter Dropdown - Only show if tags exist */}
+              {allTags.length > 0 && (
+                <select
+                  value={selectedTags[0] || ''}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      toggleTagFilter(e.target.value);
+                    }
+                  }}
+                  className="bg-black/20 rounded-lg px-4 py-2 text-sm border border-white/10 focus:border-primary outline-none"
+                >
+                  <option value="">Filter by Tag...</option>
+                  {allTags.map(tag => (
+                    <option key={tag} value={tag}>
+                      {tag} {selectedTags.includes(tag) ? '✓' : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {/* Sort Dropdown */}
               <select
-                value={selectedTags[0] || ''}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    toggleTagFilter(e.target.value);
-                  }
-                }}
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
                 className="bg-black/20 rounded-lg px-4 py-2 text-sm border border-white/10 focus:border-primary outline-none"
               >
-                <option value="">Filter by Tag...</option>
-                {allTags.map(tag => (
-                  <option key={tag} value={tag}>
-                    {tag} {selectedTags.includes(tag) ? '✓' : ''}
-                  </option>
-                ))}
+                <option value="recent">Most Recent</option>
+                <option value="oldest">Oldest First</option>
+                <option value="rating-high">Highest Rating</option>
+                <option value="rating-low">Lowest Rating</option>
+                <option value="title">Title (A-Z)</option>
               </select>
-            )}
 
-            {/* Sort Dropdown */}
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as SortOption)}
-              className="bg-black/20 rounded-lg px-4 py-2 text-sm border border-white/10 focus:border-primary outline-none"
-            >
-              <option value="recent">Most Recent</option>
-              <option value="oldest">Oldest First</option>
-              <option value="rating-high">Highest Rating</option>
-              <option value="rating-low">Lowest Rating</option>
-              <option value="title">Title (A-Z)</option>
-            </select>
-
-            <button
-              onClick={() => setIsAdding(!isAdding)}
-              className="flex items-center gap-2 bg-primary hover:bg-primary/80 text-white px-4 py-2 rounded-lg font-bold transition-colors whitespace-nowrap"
-            >
-              <Plus size={18} />
-              Add Problem
-            </button>
+              <button
+                onClick={() => setIsAdding(!isAdding)}
+                className="flex items-center gap-2 bg-primary hover:bg-primary/80 text-white px-4 py-2 rounded-lg font-bold transition-colors whitespace-nowrap"
+              >
+                <Plus size={18} />
+                Add Problem
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Selected Tags Display */}
-        {selectedTags.length > 0 && (
+        {activeTab === 'my' && selectedTags.length > 0 && (
           <div className="flex flex-wrap gap-2 items-center">
             <span className="text-xs text-muted-foreground">Active filters:</span>
             {selectedTags.map(tag => (
@@ -246,103 +296,124 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
         )}
       </div>
 
-      {/* Add Form */}
-      <div className={clsx("overflow-hidden transition-all duration-300", isAdding ? "max-h-[1000px] opacity-100" : "max-h-0 opacity-0")}>
-        <div className="glass-card p-6 rounded-2xl space-y-4">
-          <h3 className="font-bold text-lg">Add New Problem</h3>
+      {/* Add Form (Only visible in My Problems if active) */}
+      {activeTab === 'my' && (
+        <div className={clsx("overflow-hidden transition-all duration-300", isAdding ? "max-h-[1000px] opacity-100" : "max-h-0 opacity-0")}>
+          <div className="glass-card p-6 rounded-2xl space-y-4">
+            <h3 className="font-bold text-lg">Add New Problem</h3>
 
-          <input
-            placeholder="Problem Title"
-            className="input-field w-full"
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-          />
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <input
-              placeholder="Link (LeetCode, etc.)"
-              className="input-field"
-              value={newLink}
-              onChange={(e) => setNewLink(e.target.value)}
+              placeholder="Problem Title"
+              className="input-field w-full"
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
             />
-            <select
-              className="input-field"
-              value={newDifficulty}
-              onChange={(e) => setNewDifficulty(e.target.value)}
-            >
-              <option>Easy</option>
-              <option>Medium</option>
-              <option>Hard</option>
-            </select>
-          </div>
 
-          <textarea
-            placeholder="Notes (approach, key insights, edge cases, etc.)"
-            className="input-field min-h-[100px] resize-y"
-            value={newNotes}
-            onChange={(e) => setNewNotes(e.target.value)}
-          />
-
-          {/* Tags Input */}
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground uppercase">Tags</label>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <input
-                placeholder="Add tag (e.g., array, dp, graph)"
-                className="input-field flex-1"
-                value={newTagInput}
-                onChange={(e) => setNewTagInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addNewTag())}
+                placeholder="Link (LeetCode, etc.)"
+                className="input-field"
+                value={newLink}
+                onChange={(e) => setNewLink(e.target.value)}
               />
-              <button
-                type="button"
-                onClick={addNewTag}
-                className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm"
+              <select
+                className="input-field"
+                value={newDifficulty}
+                onChange={(e) => setNewDifficulty(e.target.value)}
               >
-                Add
-              </button>
+                <option>Easy</option>
+                <option>Medium</option>
+                <option>Hard</option>
+              </select>
             </div>
-            {newTags.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {newTags.map(tag => (
-                  <span
-                    key={tag}
-                    className="px-3 py-1 bg-primary/20 text-primary rounded-full text-xs flex items-center gap-2"
-                  >
-                    {tag}
-                    <button
-                      onClick={() => setNewTags(newTags.filter(t => t !== tag))}
-                      className="hover:text-white"
-                    >
-                      <X size={12} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
 
-          <div className="flex justify-end gap-2">
-            <button onClick={() => setIsAdding(false)} className="px-4 py-2 text-muted-foreground hover:text-white">Cancel</button>
-            <button onClick={handleAdd} className="bg-primary text-white px-6 py-2 rounded-lg font-bold">Save</button>
+            <textarea
+              placeholder="Notes (approach, key insights, edge cases, etc.)"
+              className="input-field min-h-[100px] resize-y"
+              value={newNotes}
+              onChange={(e) => setNewNotes(e.target.value)}
+            />
+
+            {/* Tags Input */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-muted-foreground uppercase">Tags</label>
+              <div className="flex gap-2">
+                <input
+                  placeholder="Add tag (e.g., array, dp, graph)"
+                  className="input-field flex-1"
+                  value={newTagInput}
+                  onChange={(e) => setNewTagInput(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addNewTag())}
+                />
+                <button
+                  type="button"
+                  onClick={addNewTag}
+                  className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm"
+                >
+                  Add
+                </button>
+              </div>
+              {newTags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {newTags.map(tag => (
+                    <span
+                      key={tag}
+                      className="px-3 py-1 bg-primary/20 text-primary rounded-full text-xs flex items-center gap-2"
+                    >
+                      {tag}
+                      <button
+                        onClick={() => setNewTags(newTags.filter(t => t !== tag))}
+                        className="hover:text-white"
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setIsAdding(false)} className="px-4 py-2 text-muted-foreground hover:text-white">Cancel</button>
+              <button onClick={handleAdd} className="bg-primary text-white px-6 py-2 rounded-lg font-bold">Save</button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Results Count */}
       <div className="text-sm text-muted-foreground">
-        Showing {filteredProblems.length} of {initialProblems.length} problems
+        {activeTab === 'my' ? (
+          <>Showing {filteredProblems.length} of {initialProblems.length} specific problems</>
+        ) : (
+          <>Showing {filteredGlobalProblems.length} unique global problems</>
+        )}
       </div>
 
       {/* List */}
       <div className="grid gap-4">
-        {filteredProblems.map((problem) => (
-          <ProblemCard key={problem._id} problem={problem} router={router} />
-        ))}
-        {filteredProblems.length === 0 && (
-          <div className="text-center py-12 text-muted-foreground">
-            No problems found matching your filters.
-          </div>
+        {activeTab === 'my' ? (
+          <>
+            {filteredProblems.map((problem) => (
+              <ProblemCard key={problem._id} problem={problem} router={router} />
+            ))}
+            {filteredProblems.length === 0 && (
+              <div className="text-center py-12 text-muted-foreground">
+                No problems found matching your filters.
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {filteredGlobalProblems.map((problem) => (
+              <GlobalProblemCard key={problem._id} problem={problem} router={router} />
+            ))}
+            {filteredGlobalProblems.length === 0 && (
+              <div className="text-center py-12 text-muted-foreground">
+                No global problems found.
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -350,19 +421,90 @@ export default function ProblemList({ initialProblems }: { initialProblems: Prob
   );
 }
 
+function GlobalProblemCard({ problem, router }: { problem: GlobalProblem; router: ReturnType<typeof useRouter> }) {
+  const [loading, setLoading] = useState(false);
+  const [added, setAdded] = useState(false);
+
+  async function handleAddToMyList() {
+    setLoading(true);
+    try {
+      await copyProblemToMyList({
+        title: problem.title,
+        link: problem.link,
+        difficulty: problem.difficulty
+      });
+      setAdded(true);
+      router.refresh();
+      setTimeout(() => setAdded(false), 2000);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="glass-card p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4 group hover:border-primary/30 transition-all">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <h3 className="font-bold text-lg truncate">{problem.title}</h3>
+          {problem.link && (
+            <a href={problem.link} target="_blank" className="text-muted-foreground hover:text-primary">
+              <ExternalLink size={14} />
+            </a>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+          <span className={clsx(
+            "font-bold",
+            problem.difficulty === 'Easy' ? "text-green-400" :
+              problem.difficulty === 'Medium' ? "text-yellow-400" : "text-red-400"
+          )}>
+            {problem.difficulty}
+          </span>
+          <span className="bg-white/5 px-2 py-0.5 rounded flex items-center gap-1">
+            Solved by {problem.count} others
+          </span>
+          {problem.tags && problem.tags.slice(0, 3).map(tag => (
+            <span key={tag} className="bg-primary/10 text-primary px-2 py-0.5 rounded">{tag}</span>
+          ))}
+        </div>
+      </div>
+      <button
+        onClick={handleAddToMyList}
+        disabled={loading || added}
+        className="flex items-center gap-2 bg-primary/20 hover:bg-primary text-primary hover:text-white px-4 py-2 rounded-lg text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+      >
+        {added ? <CheckCircle2 size={16} /> : <Plus size={16} />}
+        {added ? 'Added!' : 'Add to My List'}
+      </button>
+    </div>
+  );
+}
+
 function ProblemCard({ problem, router }: { problem: Problem; router: ReturnType<typeof useRouter> }) {
   const [isEditingTags, setIsEditingTags] = useState(false);
   const [editTags, setEditTags] = useState<string[]>(problem.tags || []);
+  const [optimisticTags, setOptimisticTags] = useState<string[]>(problem.tags || []);
+
   const [editTagInput, setEditTagInput] = useState('');
   const [editRating, setEditRating] = useState(problem.rating || 0);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [editNotes, setEditNotes] = useState(problem.notes || '');
   const [showNotes, setShowNotes] = useState(false);
 
+  // Sync optimistic tags with server data when it updates
+  useEffect(() => {
+    setOptimisticTags(problem.tags || []);
+  }, [problem.tags]);
+
   const saveTags = async () => {
     console.log('Saving tags:', { id: problem._id, tags: editTags, rating: editRating });
-    await updateProblemTags(problem._id, editTags, editRating || undefined);
+    // Optimistic update
+    setOptimisticTags(editTags);
     setIsEditingTags(false);
+
+    await updateProblemTags(problem._id, editTags, editRating || undefined);
     router.refresh();
   };
 
@@ -374,8 +516,9 @@ function ProblemCard({ problem, router }: { problem: Problem; router: ReturnType
   };
 
   const addEditTag = () => {
-    if (editTagInput && !editTags.includes(editTagInput.toLowerCase())) {
-      setEditTags([...editTags, editTagInput.toLowerCase()]);
+    const cleanTag = editTagInput.trim().toLowerCase();
+    if (cleanTag && !editTags.includes(cleanTag)) {
+      setEditTags([...editTags, cleanTag]);
       setEditTagInput('');
     }
   };
@@ -414,9 +557,9 @@ function ProblemCard({ problem, router }: { problem: Problem; router: ReturnType
             </div>
 
             {/* Tags Display */}
-            {!isEditingTags && problem.tags && problem.tags.length > 0 && (
+            {!isEditingTags && optimisticTags && optimisticTags.length > 0 && (
               <div className="flex flex-wrap gap-1 mb-2">
-                {problem.tags.map(tag => (
+                {optimisticTags.map(tag => (
                   <span key={tag} className="px-2 py-0.5 bg-primary/10 text-primary rounded text-xs">
                     {tag}
                   </span>
@@ -557,8 +700,16 @@ function ProblemCard({ problem, router }: { problem: Problem; router: ReturnType
 }
 
 function StatusBadge({ status, id }: { status: string, id: string }) {
+  const [optimisticStatus, setOptimisticStatus] = useState(status);
+  const router = useRouter();
+
+  // Sync with server state provided via props
+  useEffect(() => {
+    setOptimisticStatus(status);
+  }, [status]);
+
   const getIcon = () => {
-    switch (status) {
+    switch (optimisticStatus) {
       case 'DONE': return <CheckCircle2 size={20} />;
       case 'ATTEMPTED': return <CircleDot size={20} />;
       case 'PENDING': return <Clock size={20} />;
@@ -566,7 +717,7 @@ function StatusBadge({ status, id }: { status: string, id: string }) {
   };
 
   const getColor = () => {
-    switch (status) {
+    switch (optimisticStatus) {
       case 'DONE': return 'text-green-500 bg-green-500/10';
       case 'ATTEMPTED': return 'text-blue-500 bg-blue-500/10';
       case 'PENDING': return 'text-yellow-500 bg-yellow-500/10';
@@ -576,9 +727,14 @@ function StatusBadge({ status, id }: { status: string, id: string }) {
   // Cycle: PENDING -> ATTEMPTED -> DONE -> PENDING
   const cycleStatus = async () => {
     const next =
-      status === 'PENDING' ? 'ATTEMPTED' :
-        status === 'ATTEMPTED' ? 'DONE' : 'PENDING';
+      optimisticStatus === 'PENDING' ? 'ATTEMPTED' :
+        optimisticStatus === 'ATTEMPTED' ? 'DONE' : 'PENDING';
+
+    // Optimistic update
+    setOptimisticStatus(next);
+
     await updateProblemStatus(id, next);
+    router.refresh();
   };
 
   return (

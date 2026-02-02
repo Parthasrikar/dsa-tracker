@@ -17,6 +17,8 @@ type Problem = {
   status: 'DONE' | 'ATTEMPTED' | 'PENDING';
   difficulty?: 'Easy' | 'Medium' | 'Hard';
   starred?: boolean;
+  tags?: string[];
+  notes?: string;
 };
 
 type Day = {
@@ -265,10 +267,15 @@ export default function WeekView({ week, days, consistencyData }: WeekViewProps)
                                     p.status === 'ATTEMPTED' ? 'bg-blue-500' : 'bg-yellow-500'
                                 )}></div>
                                 <div className="flex flex-col truncate">
-                                  <a href={p.link || '#'} target="_blank" className="hover:text-primary transition-colors truncate font-medium flex items-center gap-1">
-                                    {p.title}
-                                    {p.link && <ExternalLink size={10} className="text-muted-foreground" />}
-                                  </a>
+                                  <div className="flex items-center gap-2">
+                                    <a href={p.link || '#'} target="_blank" className="hover:text-primary transition-colors truncate font-medium flex items-center gap-1">
+                                      {p.title}
+                                      {p.link && <ExternalLink size={10} className="text-muted-foreground" />}
+                                    </a>
+                                    {p.tags && p.tags.slice(0, 3).map(tag => (
+                                      <span key={tag} className="hidden sm:inline-block text-[10px] bg-primary/10 text-primary px-1.5 rounded">{tag}</span>
+                                    ))}
+                                  </div>
                                 </div>
                               </div>
                               <div className="flex items-center gap-3 shrink-0">
@@ -345,7 +352,23 @@ function AddProblemForm({ dayId, weekNumber, onCancel, onSuccess }: { dayId: str
   const [title, setTitle] = useState('');
   const [link, setLink] = useState('');
   const [difficulty, setDifficulty] = useState('Medium');
+  const [status, setStatus] = useState('PENDING');
+  const [notes, setNotes] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const addTag = () => {
+    const cleanTag = tagInput.trim().toLowerCase();
+    if (cleanTag && !tags.includes(cleanTag)) {
+      setTags([...tags, cleanTag]);
+      setTagInput('');
+    }
+  };
+
+  const removeTag = (tagToRemove: string) => {
+    setTags(tags.filter(t => t !== tagToRemove));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -356,16 +379,30 @@ function AddProblemForm({ dayId, weekNumber, onCancel, onSuccess }: { dayId: str
       link,
       difficulty,
       weekNumber,
-      status: 'PENDING',
-      dayId
+      status,
+      dayId,
+      tags,
+      notes
     });
     setLoading(false);
     onSuccess();
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-card p-4 rounded-xl border border-primary/20 space-y-3 animate-in zoom-in-95 duration-200">
-      <h5 className="text-sm font-bold">Add New Question</h5>
+    <form onSubmit={handleSubmit} className="bg-card p-4 rounded-xl border border-primary/20 space-y-4 animate-in zoom-in-95 duration-200">
+      <div className="flex justify-between items-center">
+        <h5 className="text-sm font-bold">Add New Question</h5>
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          className="bg-black/20 text-xs rounded-lg px-2 py-1 border border-white/5 focus:border-primary outline-none"
+        >
+          <option value="PENDING">Pending</option>
+          <option value="ATTEMPTED">Attempted</option>
+          <option value="DONE">Done</option>
+        </select>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <input
           autoFocus
@@ -381,7 +418,50 @@ function AddProblemForm({ dayId, weekNumber, onCancel, onSuccess }: { dayId: str
           onChange={e => setLink(e.target.value)}
         />
       </div>
-      <div className="flex justify-between items-center">
+
+      {/* Tags Input */}
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <input
+            placeholder="Add tag (e.g. dp, array)..."
+            className="bg-black/20 rounded-lg p-2 text-xs flex-1 border border-white/5 focus:border-primary outline-none"
+            value={tagInput}
+            onChange={e => setTagInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addTag();
+              }
+            }}
+          />
+          <button
+            type="button"
+            onClick={addTag}
+            className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-xs"
+          >
+            Add
+          </button>
+        </div>
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {tags.map(tag => (
+              <span key={tag} className="px-2 py-0.5 bg-primary/20 text-primary rounded text-[10px] flex items-center gap-1">
+                {tag}
+                <button type="button" onClick={() => removeTag(tag)} className="hover:text-white">×</button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <textarea
+        placeholder="Notes (approach, key insights...)"
+        className="w-full bg-black/20 rounded-lg p-2 text-sm min-h-[80px] border border-white/5 focus:border-primary outline-none resize-y"
+        value={notes}
+        onChange={e => setNotes(e.target.value)}
+      />
+
+      <div className="flex justify-between items-center pt-2 border-t border-white/5">
         <div className="flex gap-2">
           {['Easy', 'Medium', 'Hard'].map(d => (
             <button

@@ -33,7 +33,7 @@ export default async function FriendsPage() {
           status: 'PENDING'
         })
           .populate('from', 'name email image')
-          .select('from status')
+          .select('from to status createdAt updatedAt')
           .lean()
       ]);
     },

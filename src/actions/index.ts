@@ -167,24 +167,85 @@ export async function updateProgramConfig(startDate: string, totalWeeks: number)
     throw new Error(`Cannot reduce weeks to ${totalWeeks}. You already have ${existingWeeksCount} weeks with data. You can only increase the total weeks.`);
   }
 
+  const newStartDate = new Date(startDate);
+
   // Update user config
   await User.findByIdAndUpdate(user.id, {
     programConfig: {
-      startDate: new Date(startDate),
+      startDate: newStartDate,
       totalWeeks
     }
   });
 
-  // If increasing weeks, create the new weeks
+  // 1. Update EXISTING weeks and days to align with the new start date
+  const existingWeeks = await Week.find({ userId: user.id }).sort({ weekNumber: 1 });
+
+  // Calculate the time difference (offset)
+  const oldStartDate = existingWeeks.length > 0 ? new Date(existingWeeks[0].startDate) : new Date();
+  const timeDiff = newStartDate.getTime() - oldStartDate.getTime();
+
+  if (timeDiff === 0 && totalWeeks === existingWeeksCount) {
+    return; // No changes needed
+  }
+
+  // Bulk operations
+  const weekUpdates = [];
+  const dayUpdates = [];
+
+  // Prepare Week Updates
+  for (const week of existingWeeks) {
+    const newWeekStart = new Date(new Date(week.startDate).getTime() + timeDiff);
+    weekUpdates.push({
+      updateOne: {
+        filter: { _id: week._id },
+        update: { startDate: newWeekStart }
+      }
+    });
+  }
+
+  // Prepare Day Updates
+  const existingDays = await Day.find({ userId: user.id });
+
+  for (const day of existingDays) {
+    const newDayDate = new Date(new Date(day.date).getTime() + timeDiff);
+    dayUpdates.push({
+      updateOne: {
+        filter: { _id: day._id },
+        update: { date: newDayDate }
+      },
+      // Store original date for sorting to avoid collisions
+      originalDate: day.date
+    });
+  }
+
+  // Sort day updates to avoid unique index collisions
+  // If moving forward (+timeDiff), update latest days first (descending) so we don't bump into existing future dates
+  // If moving backward (-timeDiff), update earliest days first (ascending) so we don't bump into existing past dates
+  // WAIT: If we shift +1 week. Day 1 goes to Day 8. Day 8 exists. Collision. So day 8 must move to Day 15 FIRST.
+  // So: +Diff -> Descending Sort. -Diff -> Ascending Sort.
+
+  if (timeDiff > 0) {
+    dayUpdates.sort((a, b) => new Date(b.originalDate).getTime() - new Date(a.originalDate).getTime());
+  } else {
+    dayUpdates.sort((a, b) => new Date(a.originalDate).getTime() - new Date(b.originalDate).getTime());
+  }
+
+  // Clean up the helper property before sending to Mongo
+  const finalDayUpdates = dayUpdates.map(({ updateOne }) => ({ updateOne }));
+
+  if (weekUpdates.length > 0) await Week.bulkWrite(weekUpdates);
+  if (finalDayUpdates.length > 0) await Day.bulkWrite(finalDayUpdates);
+
+
+  // 2. Create NEW weeks if totalWeeks increased
   if (totalWeeks > existingWeeksCount) {
     const weeksToAdd = totalWeeks - existingWeeksCount;
-    const start = new Date(startDate);
+    // We can use the newStartDate directly as base
 
-    // Create new weeks starting from the next week number
     const newWeeks = [];
     for (let i = 0; i < weeksToAdd; i++) {
       const weekNum = existingWeeksCount + i + 1;
-      const weekStart = new Date(start);
+      const weekStart = new Date(newStartDate);
       weekStart.setDate(weekStart.getDate() + (weekNum - 1) * 7);
 
       newWeeks.push({

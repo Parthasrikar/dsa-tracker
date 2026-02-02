@@ -16,16 +16,44 @@ export default async function ProblemsPage() {
     await dbConnect();
 
     // Optimized query with lean() for better performance
-    const problems = await Problem.find({ userId: session.user.id })
+    const userProblems = await Problem.find({ userId: session.user.id })
         .select('title link notes status difficulty weekNumber starred tags rating createdAt')
         .sort({ createdAt: -1 })
         .lean();
 
+    const globalProblemsRaw = await Problem.aggregate([
+        { $match: { link: { $nin: [null, ""] } } },
+        {
+            $group: {
+                _id: "$link",
+                title: { $first: "$title" },
+                difficulty: { $first: "$difficulty" },
+                tags: { $first: "$tags" },
+                count: { $sum: 1 }
+            }
+        },
+        { $sort: { count: -1 } },
+        { $limit: 100 } // Limit to top 100 for now
+    ]);
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const serializedProblems = problems.map((p: any) => ({
-        ...p,
-        _id: p._id.toString(),
-        createdAt: p.createdAt?.toISOString()
+    const serializedProblems = userProblems.map((p: any) => {
+        const { _id, createdAt, ...rest } = p;
+        return {
+            ...rest,
+            _id: _id.toString(),
+            createdAt: createdAt?.toISOString()
+        };
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const serializedGlobalProblems = globalProblemsRaw.map((p: any) => ({
+        _id: p._id, // link is the id
+        title: p.title,
+        link: p._id,
+        difficulty: p.difficulty,
+        tags: p.tags,
+        count: p.count
     }));
 
     return (
@@ -37,7 +65,7 @@ export default async function ProblemsPage() {
                 <p className="text-muted-foreground">Track and manage your coding problems.</p>
             </div>
 
-            <ProblemList initialProblems={serializedProblems} />
+            <ProblemList initialProblems={serializedProblems} globalProblems={serializedGlobalProblems} />
         </div>
     );
 }
